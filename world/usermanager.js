@@ -93,7 +93,9 @@ var UserManager = function() {
 					if(!err && foundChar)
 					{
 						var encryptedPacket = crypto.encrypt( CharSelectPackets.SpawnCharPacket( foundChar ) );
+						
 						client.write( encryptedPacket );
+						
 					}
 					else
 					{
@@ -154,10 +156,9 @@ var UserManager = function() {
 						{
 							foundUser._chars.push(packet.charModel.name);
 							foundUser.save(null);
+							
 						}
-					}
-						
-					);
+					});
 
 					client.write(crypto.encrypt( CharSelectPackets.CreateCharPacket( opcodes.charSelectCallBackOp.Success) ) );
 				}
@@ -170,6 +171,29 @@ var UserManager = function() {
 		});
 	};
 	
+	this.deleteChar = function(client, packet ) {
+		var userManager = this;
+		var user = userManager.getUser( client );
+		if( user == null )
+			return;
+			
+		
+		console.log("User: " + user.model.username);
+		console.log("Char: " + packet.name);
+		UserModel.update(
+			{ username: user.model.username },
+			{ $pull: { _chars: packet.name } }, 
+			function(err, result ) {
+			
+				if( !err && result )
+				{
+					CharModel.remove({ name: packet.name }).exec();
+				}
+				
+			}
+		).exec();
+		
+	}
 	
 	this.sendRegistrationResponse = function(client, response) {
 		var encryptedPacket = crypto.encrypt( registerPacket( response ) );
