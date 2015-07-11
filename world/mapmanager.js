@@ -15,8 +15,23 @@ var Map = require('./map'),
 	opcodes = require('../packets/opcodes'),
 	crypto = require('../crypto');
 
-var MapManager = function() {
-	/*
+var MapManager = function(mapName) {
+	
+	var model = null;
+	var mapManager = this;
+	
+	MapModel.findOne({
+		name: mapName
+	}, function(err, map) {
+		if( !err && map )
+			mapManager.model = map;
+		else
+		{
+			mapManager.model = MapModel.create({ name: mapName });
+			console.log("Map \"" + mapName + "\" not found, so a new entry was created.");
+		}
+	});
+			
 	this.chars = [];
 	
 	this.packetHandlers = {};
@@ -42,7 +57,7 @@ var MapManager = function() {
 	// - Validate spawn - is it allowed?
 	// - Add charID to map associated to mapID
 	// - Report to all chars in map that char has spawned
-	this.spawnCharacter = function(client, packet) {
+	this.spawnChar = function(client, packet) {
 		var mapManager = this;
 		
 		CharSpawnModel.findOne({
@@ -59,7 +74,7 @@ var MapManager = function() {
 				}
 				
 			}
-		}
+		});
 		
 		UserModel.findOne({ 
 			username: packet.username, 
@@ -72,7 +87,7 @@ var MapManager = function() {
 				response = opcodes.loginCallbackOperation.Error;
 			} else {
 				if(user) {
-					userManager.addUser(client, user);
+					UserManager.addUser(client, user);
 					response = opcodes.loginCallbackOperation.Valid;
 				} else {
 					response = opcodes.loginCallbackOperation.NotExist;
@@ -84,114 +99,36 @@ var MapManager = function() {
 		});
 	};
 
-
-	this.sendRegistrationResponse = function(client, response) {
-		var encryptedPacket = crypto.encrypt( registerPacket( response ) );
-		client.write(encryptedPacket);
+	this.addChar = function(char) {
+		this.chars.push(char);
+		this.model._chars.push(char);
+		this.model.save(null);
+	}
+	
+	this.removeChar = function(char) {
+		_.remove(this.chars, function(_char) {
+			return _char === char;
+		});
+		
+		this.model._chars.pull(char);
+		this.model.save(null);
 	}
 
-	this.registerUser = function(client, packet) {
-
-		//validate username length
-		if(!validator.isLength(packet.username, 5, 20)) {
-			this.sendRegistrationResponse(client, opcodes.registerCallbackOperation.UsernameTooShort);
-			return;
-		}
-
-		//validate username bad characters
-		if(!validator.isAlphanumeric(packet.username)) {
-			this.sendRegistrationResponse(client, opcodes.registerCallbackOperation.UsernameBadChars);
-			return;
-		}
-
-		//validate password length
-		if(!validator.isLength(packet.password, 6, 20)) {
-			this.sendRegistrationResponse(client, opcodes.registerCallbackOperation.PasswordTooShort);
-		}
-
-		//validate email
-		if(!validator.isEmail(packet.email)) {
-			this.sendRegistrationResponse(client, opcodes.registerCallbackOperation.EmailInvalid);
-		}
-
-		var userManager = this;
-
-		UserModel.findOne({
-			$or: [
-				{ 'username': packet.username },
-				{ 'email': packet.email }
-			]
-		}, 
-		function(err, user) {
-
-			var response;
-
-			if(err) {
-				response = opcodes.registerCallbackOperation.Error;
-			} 
-			else if(user) {
-				if(user.username == packet.username) {
-					response = opcodes.registerCallbackOperation.UsernameExists;
-				}
-				else {
-					response = opcodes.registerCallbackOperation.EmailUsed;
-				}
-			}
-
-			//if username/email exists or error respond
-			if(response !== undefined) {
-				userManager.sendRegistrationResponse(client, response);
-				return;
-			}
-
-			//register user
-			UserModel.create({
-				'username': packet.username,
-				'password': packet.password,
-				'email': packet.email
-			}, function(err) {
-				if(err) {
-					response = opcodes.registerCallbackOperation.Error;
-				} else {
-					response = opcodes.registerCallbackOperation.Valid;
-				}
-
-				userManager.sendRegistrationResponse(client, response);
-			});
+	this.findIndex = function(char) {
+		var index = _.findIndex(this.chars, function(_char) {
+			return (_char === char);
 		});
-	};
-
-	this.findIndex = function(client) {
-		var index = _.findIndex(users, function(user) {
-			return (user.client === client);
-		});
-
-		if(index < 0) {
-			throw "User with this socket doesn't exist";
-		}
 
 		return index;
 	}
 
-	this.getUser = function(client) {
-		var index = this.findIndex(client);
-		return this.users[index];
+	this.getChar = function(char) {
+		var index = this.findIndex(char);
+		if( index < 0 )
+			return null;
+		return this.chars[index];
 	};
-
-	this.removeUser = function(client) {
-		_.remove(this.users, function(user) {
-			return user.client === client;
-		});
-	};
-
-	this.addChar = function(model) {
-		this.chars.push(model);
-	};
-
-	this.disconnected = function(client) {
-		this.removeUser(client);
-	};
-
+	
 	this.registerPacket = function(key, func) {
 		//if(process.env.NODE_ENV == "production") {
 			//this.packetHandlers[key] = _.bind(func, this);
@@ -205,26 +142,23 @@ var MapManager = function() {
 			var wrapper = _.bind(func, _this),
 					operation;
 
-			_.find(opcodes.userOperation, function(value, name) {
+			_.find(opcodes.mapOperation, function(value, name) {
 				if(packet.operation === value) {
 					operation = name;
 					return true;
 				}
 			});
 
-			console.log("[SERVER] < [" + client.id + "] - '" + operation + "' packet recieved");
+			console.log("[" + mapName + "] < [" + client.id + "] - '" + operation + "' packet recieved");
 
 			wrapper(client, packet);
 
-			console.log("[SERVER] > [" + client.id + "] - '" + operation + "' packet handled");
+			console.log("[" + mapName + "] > [" + client.id + "] - '" + operation + "' packet handled");
 		};
 	};
 
-	this.registerPacket(opcodes.userOperation.Register, this.registerUser);
-	this.registerPacket(opcodes.userOperation.Login, this.loginUser);
-
-	console.log("User manager has loaded");
-	*/
+	this.registerPacket(opcodes.mapOperation.Spawn, this.spawnChar);
+	console.log("Map manager has loaded");
 };
 
 module.exports = MapManager;

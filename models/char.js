@@ -5,11 +5,12 @@ var Schema = mongoose.Schema;
 
 var charSchema = new Schema({
 	_user: String,
-	_map: { type: Number, default: 0 },
 	_spawn: { type: Number, default: 0 },
 	_party: Schema.Types.ObjectId,
 	_guild: Schema.Types.ObjectId,
 	name: String,
+	map: { type: String, default: "zantCity" },  // TODO: change default to fairy island
+	online: {type: Number, default: 0},
 	job1: { type: Number, default: 1 },
 	job2:  { type: Number, default: 0 },
 	level: { type: Number, default: 1 },

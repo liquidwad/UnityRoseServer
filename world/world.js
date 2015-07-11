@@ -1,16 +1,26 @@
 'use strict';
 
 var _ = require('lodash'),
+	dict = require('dict'),
 	UserManager = require('./usermanager'),
 	crypto = require('../crypto'),
 	MapManager = require('./mapmanager');
 
-function World() {
+var World = function() {
 
-	this.userManager = new UserManager();
-
-	this.mapManager = new MapManager();
-
+	this.userManager = new UserManager(this);
+	
+	this.mapDict = {};
+	
+	this.mapDict["zantCity"] = new MapManager("zantCity");
+	this.mapDict["junonPolis"] = new MapManager("junonPolis");
+	this.mapDict["fairyIsland"] = new MapManager("fairyIsland");
+	
+	this.getMapManager = function(mapName) {
+		return this.mapDict[mapName];
+	};
+	
+	
 	this.handleUserPacket = function(client, packet) {
 		this.userManager.handlePacket(client, packet);
 	};

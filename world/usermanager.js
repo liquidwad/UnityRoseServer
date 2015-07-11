@@ -12,8 +12,9 @@ var _ = require('lodash'),
 	opcodes = require('../packets/opcodes'),
 	crypto = require('../crypto');
 
-var UserManager = function() {
+var UserManager = function(world) {
 
+	this.world = world;
 	this.users = [];
 
 	this.packetHandlers = {};
@@ -30,7 +31,7 @@ var UserManager = function() {
 	this.loginUser = function(client, packet) {
 		var userManager = this;
 
-		UserModel.findOne({ 
+		UserModel.findOne({  
 			username: packet.username, 
 			password: packet.password 
 		}, function(err, user) {
@@ -177,9 +178,6 @@ var UserManager = function() {
 		if( user == null )
 			return;
 			
-		
-		console.log("User: " + user.model.username);
-		console.log("Char: " + packet.name);
 		UserModel.update(
 			{ username: user.model.username },
 			{ $pull: { _chars: packet.name } }, 
@@ -193,6 +191,52 @@ var UserManager = function() {
 			}
 		).exec();
 		
+	}
+	
+	this.selectChar = function(client, packet ) {
+		var userManager = this;
+		var user = userManager.getUser( client );
+		if( user == null )
+			return;
+			
+		// Find the character in the database to know which map they are on
+		UserModel.findOne({
+			username: user.model.username,
+			_chars: { $all: packet.name }
+		}, function(err, foundUser) {
+			if(err || (foundUser == null) )
+			{
+				console.log("Couldn't find user: " + user.model.username);
+				return;
+			}
+			
+			CharModel.findOne({
+				name: packet.name
+			}, function(err, char) {
+				if( !err && char )
+				{
+					user.model.activeChar = foundUser.activeChar = char.name;
+					char.online = 1;  // TODO: check if already online
+					
+					if( char.map == null || char.map == "")
+						char.map = "zantCity"; 		// TODO: set to default city
+					
+					char.save(null);
+					foundUser.save(null);
+					
+					// Add char to the appropriate map
+					
+					try {
+						world.getMapManager(char.map).addChar(char.name);  //add full char or just name?
+						user.model.activeMap = foundUser.activeMap = char.map;
+						foundUser.save(null);
+						client.write(crypto.encrypt( CharSelectPackets.SelectCharPacket( opcodes.charSelectCallBackOp.Success, char.map ) ) );
+					} catch(e) {
+						console.log("Error occurred trying add " + char.name + " to " + char.map + ": " + e);
+					}
+				}
+			});
+		});
 	}
 	
 	this.sendRegistrationResponse = function(client, response) {
@@ -228,7 +272,7 @@ var UserManager = function() {
 
 		UserModel.findOne({
 			$or: [
-				{ username: packet.username },
+				{ username: packet.username }, 
 				{ email: packet.email }
 			]
 		}, 
@@ -283,11 +327,45 @@ var UserManager = function() {
 	this.getUser = function(client) {
 		var index = this.findIndex(client);
 		if( index < 0 )
-			return null;
+		{
+			// See if a user with the given username already exists
+			// and replace him with this one
+			UserModel.findOne({  
+				ip: client.remoteAddress // use some combination of remote address and a private key?
+			}, function(err, user) {
+				if(!err && user)
+					this.updateUserClient(user, client);
+				else
+					return null;
+			});
+		}
 		return this.users[index];
 	};
 
 	this.removeUser = function(client) {
+		var user = this.getUser(client);
+		UserModel.findOne({
+			username: user.model.username
+		}, function(err, foundUser){
+			if(!err && foundUser){
+				foundUser.online = false;
+				foundUser.save(null);
+			}
+		});
+		
+		var char = user.model.activeChar;
+		var map = user.model.activeMap;
+		
+		
+		
+		try {
+			world.getMapManager(map).removeChar(char);  //add full char or just name?
+			console.log("Removed " + char + " from " + map);
+		} catch(e) {
+			console.log("Error trying to remove " + char + " from " + map + ": " + e);
+		}
+		
+		
 		_.remove(this.users, function(user) {
 			return user.client === client;
 		});

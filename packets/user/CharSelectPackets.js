@@ -25,3 +25,15 @@ exports.CreateCharPacket = function(status)
 
 	return packet;
 };
+
+exports.SelectCharPacket = function(status, map) 
+{
+	var packet = {
+		type: type.User,
+		operation: opcodes.userOperation.SelectChar,
+		name: map,
+		status: status
+	};
+
+	return packet;
+};

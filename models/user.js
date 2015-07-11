@@ -10,7 +10,8 @@ var userSchema = new Schema({
 	server: {type: Number, default: 0 },
 	online: { type: Boolean, default: false },
 	_chars: {type: Array, default: [] },
-	_activeChar: String
+	activeChar: {type: String, default: "" },
+	activeMap: {type: String, default: "" }
 });
 
 var User = mongoose.model('User', userSchema);

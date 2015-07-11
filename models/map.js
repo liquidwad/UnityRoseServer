@@ -7,7 +7,7 @@ var mapSchema = new Schema({
 	_mapID: Number,
 	_planet: Number,
 	_respawns:Number,
-	_chars: [Schema.Types.ObjectId],
+	_chars: [String],
 	_npcs: [Number],
 	_mobSpawns: [Schema.Types.ObjectId],
 	_gates: [Number],

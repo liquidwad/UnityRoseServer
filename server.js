@@ -51,8 +51,8 @@ server.on('connection', function(socket) {
 		}
 	});
 
-	socket.on('end', function() {
-		
+	socket.on('disconnect', function() {
+		console.log("disconnect");
 		world.removeClient(socket);
 	});
 
